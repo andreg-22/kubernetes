@@ -55,20 +55,59 @@ resource "aws_instance" "k8s_master" {
   instance_type          = var.instance_type_master
   key_name               = aws_key_pair.k8s_lab.key_name
   vpc_security_group_ids = [aws_security_group.k8s_sg.id]
+  user_data              = <<-EOF
+  #!/bin/bash
+  set -euxo pipefail
+
+  swapoff -a
+  sed -ri '/\s+swap\s+/s/^/#/' /etc/fstab
+
+  cat <<'MODULES' > /etc/modules-load.d/k8.conf
+  br_netfilter
+  MODULES
+
+  modprobe br_netfilter
+
+  cat <<'SYSCTL' > /etc/sysctl.d/99-kubernetes-networking.conf
+  net.bridge.bridge-nf-call-iptables = 1
+  net.bridge.bridge-nf-call-ip6tables = 1
+  net.ipv4.ip_forward = 1
+
+  sysctl --system
+  EOF
 
   tags = {
     name = "Master node"
   }
 }
-
+# 2nd master node config
 resource "aws_instance" "k8s_master_2" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.instance_type_master
   key_name               = aws_key_pair.k8s_lab.key_name
   vpc_security_group_ids = [aws_security_group.k8s_sg.id]
+  user_data              = <<-EOF
+  #!/bin/bash
+  set -euxo pipefail
 
+  swapoff -a
+  sed -ri '/\s+swap\s+/s/^/#/' /etc/fstab
+
+  cat <<'MODULES' > /etc/modules-load.d/k8.conf
+  br_netfilter
+  MODULES
+
+  modprobe br_netfilter
+
+  cat <<'SYSCTL' > /etc/sysctl.d/99-kubernetes-networking.conf
+  net.bridge.bridge-nf-call-iptables = 1
+  net.bridge.bridge-nf-call-ip6tables = 1
+  net.ipv4.ip_forward = 1
+
+  sysctl --system
+  EOF
   tags = {
-    name = "Master node"
+    name = "Master node 2"
   }
 }
 
@@ -80,16 +119,35 @@ resource "aws_instance" "k8s_worker" {
   key_name               = aws_key_pair.k8s_lab.key_name
   vpc_security_group_ids = [aws_security_group.k8s_sg.id]
 
-  count = 2
+  count     = 2
+  user_data = <<-EOF
+  #!/bin/bash
+  set -euxo pipefail
 
+  swapoff -a
+  sed -ri '/\s+swap\s+/s/^/#/' /etc/fstab
+
+  cat <<'MODULES' > /etc/modules-load.d/k8.conf
+  br_netfilter
+  MODULES
+
+  modprobe br_netfilter
+
+  cat <<'SYSCTL' > /etc/sysctl.d/99-kubernetes-networking.conf
+  net.bridge.bridge-nf-call-iptables = 1
+  net.bridge.bridge-nf-call-ip6tables = 1
+  net.ipv4.ip_forward = 1
+
+  sysctl --system
+  EOF
 
   tags = {
     name = "worker-node"
   }
 }
-
+#ssh key pair
 resource "aws_key_pair" "k8s_lab" {
   key_name   = "k8s_lab"
-  public_key = var.ssh_public_key
+  public_key = var.ssh_public_key #public key in HCP terraform
 }
 

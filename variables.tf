@@ -5,6 +5,6 @@ variable "ssh_public_key" {
 
 variable "instance_type_master" {
   description = "controlplane instance type"
-  type = string
-  default = "t3.medium"
+  type        = string
+  default     = "t3.medium"
 }
