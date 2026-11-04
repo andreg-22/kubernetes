@@ -20,16 +20,50 @@ data "aws_ami" "ubuntu" {
   }
 }
 
+resource "aws_vpc" "k8s_vpc" {
+  cidr_block = var.vpc_k8s
+}
+
+
+resource "aws_subnet" "private_a" {
+  vpc_id            = aws_vpc.k8s_vpc.id
+  cidr_block        = "172.16.10.0/24"
+  availability_zone = "us-east-1a"
+
+  tags = {
+    name = "private-subnet-a"
+  }
+}
+
+resource "aws_subnet" "private_b" {
+  vpc_id            = aws_vpc.k8s_vpc.id
+  cidr_block        = "172.16.20.0/24"
+  availability_zone = "us-east-1b"
+
+  tags = {
+    name = "private-subnet-b"
+  }
+}
+
 resource "aws_security_group" "k8s_sg" {
   name        = "k8s_cluster"
   description = "Allow SSH from RHEL"
+  vpc_id      = aws_vpc.k8s_vpc.id
 
   ingress {
     description = "SSH"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
+    self        = true
     cidr_blocks = ["100.51.236.6/32"]
+  }
+
+  ingress {
+    description = "connectivity to nlb"
+    from_port   = 6443
+    to_port     = 6443
+    protocol    = "tcp"
   }
 
   ingress {
@@ -48,66 +82,69 @@ resource "aws_security_group" "k8s_sg" {
   }
 }
 
+# secuirty group for network load balancer
+resource "aws_security_group" "nlb_k8s_sg" {
+  name        = "nlb_k8s_sg"
+  description = "security group for nlb api"
+  vpc_id      = aws_vpc.k8s_vpc.id
+
+  ingress {
+    description     = "Node to nlb connectivity"
+    from_port       = 6443
+    to_port         = 6443
+    protocol        = "tcp"
+    security_groups = [aws_security_group.k8s_sg.id]
+  }
+
+
+  egress {
+    description     = "Node to nlb connectivity"
+    from_port       = 6443
+    to_port         = 6443
+    protocol        = "tcp"
+    security_groups = [aws_security_group.k8s_sg.id]
+  }
+
+  tags = {
+    name = "security-group-nlb"
+  }
+
+}
 
 # k8s master node config
-resource "aws_instance" "k8s_master" {
+resource "aws_instance" "k8s_controlplane_1" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.instance_type_master
   key_name               = aws_key_pair.k8s_lab.key_name
   vpc_security_group_ids = [aws_security_group.k8s_sg.id]
-  user_data              = <<-EOF
-  #!/bin/bash
-  set -euxo pipefail
-
-  swapoff -a
-  sed -ri '/\s+swap\s+/s/^/#/' /etc/fstab
-
-  cat <<'MODULES' > /etc/modules-load.d/k8.conf
-  br_netfilter
-  MODULES
-
-  modprobe br_netfilter
-
-  cat <<'SYSCTL' > /etc/sysctl.d/99-kubernetes-networking.conf
-  net.bridge.bridge-nf-call-iptables = 1
-  net.bridge.bridge-nf-call-ip6tables = 1
-  net.ipv4.ip_forward = 1
-
-  sysctl --system
-  EOF
+  user_data              = file("${path.module}/k8s-boot.sh")
 
   tags = {
-    name = "Master node"
+    name = "Controlplane-1"
   }
+
 }
 # 2nd master node config
-resource "aws_instance" "k8s_master_2" {
+resource "aws_instance" "k8s_controlplane_2" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.instance_type_master
   key_name               = aws_key_pair.k8s_lab.key_name
   vpc_security_group_ids = [aws_security_group.k8s_sg.id]
-  user_data              = <<-EOF
-  #!/bin/bash
-  set -euxo pipefail
-
-  swapoff -a
-  sed -ri '/\s+swap\s+/s/^/#/' /etc/fstab
-
-  cat <<'MODULES' > /etc/modules-load.d/k8.conf
-  br_netfilter
-  MODULES
-
-  modprobe br_netfilter
-
-  cat <<'SYSCTL' > /etc/sysctl.d/99-kubernetes-networking.conf
-  net.bridge.bridge-nf-call-iptables = 1
-  net.bridge.bridge-nf-call-ip6tables = 1
-  net.ipv4.ip_forward = 1
-
-  sysctl --system
-  EOF
+  user_data              = file("${path.module}/k8s-boot.sh")
   tags = {
-    name = "Master node 2"
+    name = "Controlplane-2"
+  }
+}
+
+# 3rd master node config
+resource "aws_instance" "k8s_controlplane_3" {
+  ami                    = data.aws_ami.ubuntu.id
+  instance_type          = var.instance_type_master
+  key_name               = aws_key_pair.k8s_lab.key_name
+  vpc_security_group_ids = [aws_security_group.k8s_sg.id]
+  user_data              = file("${path.module}/k8s-boot.sh")
+  tags = {
+    name = "Controlplane-3"
   }
 }
 
@@ -120,26 +157,7 @@ resource "aws_instance" "k8s_worker" {
   vpc_security_group_ids = [aws_security_group.k8s_sg.id]
 
   count     = 2
-  user_data = <<-EOF
-  #!/bin/bash
-  set -euxo pipefail
-
-  swapoff -a
-  sed -ri '/\s+swap\s+/s/^/#/' /etc/fstab
-
-  cat <<'MODULES' > /etc/modules-load.d/k8.conf
-  br_netfilter
-  MODULES
-
-  modprobe br_netfilter
-
-  cat <<'SYSCTL' > /etc/sysctl.d/99-kubernetes-networking.conf
-  net.bridge.bridge-nf-call-iptables = 1
-  net.bridge.bridge-nf-call-ip6tables = 1
-  net.ipv4.ip_forward = 1
-
-  sysctl --system
-  EOF
+  user_data = file("${path.module}/k8s-boot.sh")
 
   tags = {
     name = "worker-node"
@@ -151,3 +169,60 @@ resource "aws_key_pair" "k8s_lab" {
   public_key = var.ssh_public_key #public key in HCP terraform
 }
 
+# network load balancer config
+resource "aws_lb" "k8s_loadbalancer" {
+  name               = "k8s-nlb"
+  internal           = true
+  load_balancer_type = "network"
+  security_groups    = [aws_security_group.nlb_k8s_sg.id]
+
+  subnets = [aws_subnet.private_a.id, aws_subnet.private_b.id]
+
+  enable_cross_zone_load_balancing = true
+
+
+  tags = {
+    name = "k8s-nlb"
+  }
+}
+
+
+
+# target group for network load balancer
+resource "aws_lb_target_group" "k8s_nlb_tg" {
+  name        = "nlb-tg-k8s"
+  port        = 6443
+  protocol    = "TCP"
+  target_type = "instance"
+  vpc_id      = aws_vpc.k8s_vpc.id
+
+  health_check {
+    enabled  = true
+    protocol = "tcp"
+    port     = 6443
+  }
+
+  tags = {
+    name = "target-group-nlb"
+  }
+}
+
+
+resource "aws_lb_listener" "front_end" {
+  load_balancer_arn = aws_lb.k8s_loadbalancer.arn
+  port              = "6443"
+  protocol          = "tcp"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.k8s_nlb_tg.arn
+  }
+}
+
+resource "aws_lb_target_group_attachment" "controlplane_nodes" {
+  for_each = local.k8s_controlplane_instance_ids
+
+  target_group_arn = aws_lb_target_group.k8s_nlb_tg.arn
+  target_id        = each.value
+  port             = 6443
+}
