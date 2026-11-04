@@ -28,7 +28,7 @@ resource "aws_vpc" "k8s_vpc" {
 resource "aws_subnet" "private_a" {
   vpc_id            = aws_vpc.k8s_vpc.id
   cidr_block        = "172.16.10.0/24"
-  availability_zone = "us-east-1a"
+  availability_zone = data.aws_availability_zones.available.names[0]
 
   tags = {
     name = "private-subnet-a"
@@ -38,7 +38,7 @@ resource "aws_subnet" "private_a" {
 resource "aws_subnet" "private_b" {
   vpc_id            = aws_vpc.k8s_vpc.id
   cidr_block        = "172.16.20.0/24"
-  availability_zone = "us-east-1b"
+  availability_zone = data.aws_availability_zones.available.names[0]
 
   tags = {
     name = "private-subnet-b"
