@@ -55,7 +55,6 @@ resource "aws_security_group" "k8s_sg" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    self        = true
     cidr_blocks = ["100.51.236.6/32"]
   }
 
@@ -198,7 +197,7 @@ resource "aws_lb_target_group" "k8s_nlb_tg" {
 
   health_check {
     enabled  = true
-    protocol = "tcp"
+    protocol = "TCP"
     port     = 6443
   }
 
