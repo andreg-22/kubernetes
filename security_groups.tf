@@ -49,12 +49,5 @@ resource "aws_vpc_security_group_ingress_rule" "nodes_from_nlb" {
   ip_protocol                  = "tcp"
 }
 
-# Security group ingress rules for network load balancer access from controlplane nodes
-resource "aws_vpc_security_group_ingress_rule" "nlb_to_nodes" {
-  security_group_id            = aws_security_group.nlb_k8s_sg.id
-  referenced_security_group_id = aws_security_group.k8s_sg.id
-  from_port                    = 6443
-  to_port                      = 6443
-  ip_protocol                  = "tcp"
-}
+
 
